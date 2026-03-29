@@ -7,11 +7,10 @@ Streamlit web application.
 Run: streamlit run app.py
 """
 
-import os
-import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
+from model_utils import DEFAULT_DATA_PATH, DEFAULT_MODEL_DIR, load_or_train_model
 
 # ── page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -22,10 +21,6 @@ st.set_page_config(
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
-MODEL_PATH = "model/readmission_model.joblib"
-FEATURE_PATH = "model/feature_names.joblib"
-METRICS_PATH = "model/metrics.joblib"
-
 NUMERIC_FEATURES = [
     "age",
     "prior_admissions",
@@ -95,13 +90,13 @@ RISK_ACTIONS = {
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 @st.cache_resource(show_spinner=False)
-def load_model():
-    if not os.path.exists(MODEL_PATH):
-        return None, None, None
-    pipeline = joblib.load(MODEL_PATH)
-    feature_names = joblib.load(FEATURE_PATH)
-    metrics = joblib.load(METRICS_PATH)
-    return pipeline, feature_names, metrics
+def get_model():
+    """Load the saved model, retraining automatically if the artifact is
+    missing or was built with an incompatible scikit-learn version."""
+    return load_or_train_model(
+        data_path=DEFAULT_DATA_PATH,
+        model_dir=DEFAULT_MODEL_DIR,
+    )
 
 
 def risk_level(prob: float) -> str:
@@ -318,18 +313,11 @@ def render_results(pipeline, feature_names, inputs: dict):
 def main():
     render_header()
 
-    pipeline, feature_names, metrics = load_model()
+    with st.spinner("Loading model …"):
+        pipeline, feature_names, metrics, was_retrained = get_model()
 
-    if pipeline is None:
-        st.error(
-            "Model not found. Please run the setup commands below in your terminal first:",
-            icon="🚨",
-        )
-        st.code(
-            "python generate_data.py\npython train_model.py",
-            language="bash",
-        )
-        st.stop()
+    if was_retrained:
+        st.toast("Model retrained from scratch (no saved artifact found).", icon="ℹ️")
 
     render_model_metrics(metrics)
     render_disclaimer()
